@@ -1,25 +1,54 @@
-name: Build and Push
+name: Build & Push Syslog Collector Docker Image
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
+    paths-ignore:
+      - "playbooks/**"
+      - "findings/**"
+      - "**.md"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: johanneslks/syslog-collector
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
-
     permissions:
       contents: read
       packages: write
 
     steps:
-    - uses: actions/checkout@v4
+      # Checkout source code
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Login to GHCR
-      run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      # Login to GHCR
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build image
-      run: docker build -t ghcr.io/${{ github.repository_owner | lower }}/syslog-collector/syslog:latest .
+      # Extract Docker image metadata (tags/labels)
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=
 
-    - name: Push image
-      run: docker push ghcr.io/${{ github.repository_owner | lower }}/syslog-collector/syslog:latest
+      # Build and push Docker image
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
